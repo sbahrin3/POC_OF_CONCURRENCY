@@ -10,48 +10,52 @@ import demo.entity.User;
 import lebah.db.entity.Persistence;
 
 public class TestFetchDataConcurrently2 {
+	
+	static long startTime, endTime, duration;
 
-	public static void main(String[] args) throws Exception {
+	public static void main(String...args) throws Exception {
+
 		Persistence db = Persistence.db();
-
-		// Define concurrency settings
-		int totalRecords = 10_000;
-		int batchSize = 2_000;
-		int numThreads = (int) Math.ceil((double) totalRecords / batchSize);
-
+		
+		logBegin("Fetching database records with Parallel Programming.");
+		
+		String query = "select u from User u order by u.fullName";
+		List<User> users = new ArrayList<>();
 		try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-			System.out.println("Fetching with concurrency method.");
-			System.out.println("Begin benchmark.");
-			long startTime = System.nanoTime();
-
-			String query = "SELECT u FROM User u ORDER BY u.fullName";
-
 			List<CompletableFuture<List<User>>> futures = new ArrayList<>();
-
-			for (int page = 1; page <= numThreads; page++) {
-				int currentPage = page;
-				futures.add(listData(executor, db, query, currentPage, batchSize));
-			}
-
-			List<User> allUsers = futures.stream()
-					.map(CompletableFuture::join)
-					.flatMap(List::stream)
-					.toList();
-
-
-			long endTime = System.nanoTime();
-			System.out.println("End benchmark.");
-
-			double elapsedTimeMs = (endTime - startTime) / 1_000_000.0; // Convert to milliseconds
-
-			System.out.println("Total records = " + allUsers.size());
-			System.out.println("Elapsed Time = " + elapsedTimeMs + " ms");
+			int pageSize = 2000;
+			for ( int page = 1; page < 6; page++ )
+				futures.add(listData(executor, db, query, page, pageSize));
+			
+			users = futures.stream().map(CompletableFuture::join).flatMap(List::stream).toList();
+			
 		}
+		
+		logEnd(users);
+
 	}
 
-	// Make sure listData() method uses generics properly
-	public static CompletableFuture<List<User>> listData(ExecutorService executor, Persistence db, String query, int page, int size) {
-		return CompletableFuture.supplyAsync(() -> db.listDataByPage(query, page, size), executor);
+	public static CompletableFuture<List<User>> listData(ExecutorService executor, Persistence db, String query, int pageNo, int max) {
+		CompletableFuture<List<User>> listFuture = CompletableFuture.supplyAsync(() -> {
+			return db.listDataByPage(query, pageNo, max);
+		}, executor);
+		return listFuture;
+	}
+
+	
+	static void logBegin(String msg) {
+		System.out.println(msg);
+		System.out.println("Begin benchmark.");
+		startTime = System.nanoTime();
+	}
+	
+	static void logEnd(List<User> users) {
+		long endTime = System.nanoTime();
+		long duration = endTime - startTime; // Calculate elapsed time
+		double elapsedTimeMs = duration / 1_000_000.0; // Convert to milliseconds
+		System.out.println("End benchmark.");
+		System.out.println("Total records = " + users.size());
+		System.out.println("Elapsed Time = " + elapsedTimeMs);
 	}
 
 }
